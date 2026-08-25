@@ -42,6 +42,7 @@ class SteadyIncompressible3D(PDE):
     """
 
     def __init__(self, nu: float = 1.5e-5, rho: float = 1.0):
+        self.dim = 3  # PhysicsInformer reads equations.dim (phy_informer.py:122)
         x, y, z = Symbol("x"), Symbol("y"), Symbol("z")
         iv = {"x": x, "y": y, "z": z}
         u = Function("u")(*iv.values())
