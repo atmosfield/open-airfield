@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ipynb_checkpoints/
+# cached eval grids + field exports (Zenodo, not git — >100MB)
+*.npz
+*.vtu
+*.vtk
+outputs/
