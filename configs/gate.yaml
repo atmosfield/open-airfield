@@ -1,0 +1,21 @@
+# The gate numbers live HERE (technical spec §U6/§U8).
+# Pre-committed by Tino, 24 Aug 2026, before any run. Do not tune after results.
+
+densities: [5, 10, 20, 50]
+placements: 8
+
+gate:
+  # GO iff median rel_l2(model, at_density) <= ratio_max * median rel_l2(best baseline, at_density)
+  # AND median rel_l2(model) is monotone improving across monotone_densities (10 > 20 > 50).
+  at_density: 20
+  ratio_max: 0.5
+  monotone_densities: [10, 20, 50]
+
+sweep:
+  # 20k-step fits measured 23.7 min on the T4 (25 Aug): 32 fits ~= 12.6 h, over
+  # the 6 h budget. 8k steps ~= 9.5 min/fit meets the <=10 min target; convergence
+  # at 8k to be confirmed with a single fit before the sweep commits to it.
+  model_steps: 8000
+
+metrics:
+  theta: 0.25  # pointwise relative-error threshold for frac_above
