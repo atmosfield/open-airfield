@@ -27,7 +27,11 @@ BC_SEED = 99
 
 
 def wall_points(n: int, rng: np.random.Generator) -> np.ndarray:
-    """Uniform samples over all six faces (the diffusers live in the truth values)."""
+    """Uniform samples over all six faces (the vent values live in the truth field).
+
+    Synthetic only. CASE-01 uses geometry.case01_boundary_conditions instead,
+    which excludes the extract patch and stratifies the supply.
+    """
     pts = rng.random((n, 3)) * np.array([LX, LY, LZ])
     face = rng.integers(0, 6, size=n)
     axis, side = face % 3, face // 3

@@ -3,6 +3,9 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ipynb_checkpoints/
+# CASE-01 working copy: 207MB, archived in Drive + Zenodo, never in git
+data/
+
 # cached eval grids + field exports (Zenodo, not git — >100MB)
 *.npz
 *.vtu

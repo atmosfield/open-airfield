@@ -41,7 +41,9 @@ def main() -> int:
     if args.vtk:
         from open_airfield.ingest_vtk import Case01Field
 
-        field = Case01Field(args.vtk)
+        # units_verified: CASE-01 ships a meta.yml sidecar declaring SI explicitly,
+        # so the claim is evidenced here rather than assumed in the reader.
+        field = Case01Field(args.vtk, units_verified=True)
         provisional = False
     else:
         field = SyntheticField()
@@ -56,28 +58,25 @@ def main() -> int:
         # Imported lazily: torch/physicsnemo exist only in the container.
         import numpy as np
 
-        from open_airfield.geometry import LX, LY, LZ, SUPPLY, SUPPLY_VELOCITY
+        from open_airfield.geometry import LX, LY, LZ, case01_boundary_conditions
         from open_airfield.model import PINNReconstructor
 
         steps = args.steps or cfg["sweep"]["model_steps"]
-        rng = np.random.default_rng(99)
-        n_bc = 4_096
-        bc_pts = rng.random((n_bc, 3)) * np.array([LX, LY, LZ])
-        face = rng.integers(0, 6, size=n_bc)
-        axis, side = face % 3, face // 3
-        bc_pts[np.arange(n_bc), axis] = side * np.array([LX, LY, LZ])[axis]
 
         if args.vtk:
-            # CASE-01: no-slip walls + the declared supply velocity.
-            bc_u = np.zeros_like(bc_pts)
-            on_supply = (
-                (np.abs(bc_pts[:, 2] - LZ) < 1e-9)
-                & (np.abs(bc_pts[:, 0] - SUPPLY.x) <= SUPPLY.width / 2)
-                & (np.abs(bc_pts[:, 1] - SUPPLY.y) <= SUPPLY.depth / 2)
-            )
-            bc_u[on_supply] = [0.0, 0.0, -SUPPLY_VELOCITY]
+            # CASE-01: no-slip walls + declared supply, extract excluded, supply
+            # stratified. See geometry.case01_boundary_conditions for why.
+            bc_pts, bc_u = case01_boundary_conditions()
         else:
-            bc_u = field.velocity(bc_pts)  # synthetic: data-consistent truth BC
+            # Synthetic: BCs come from truth on all six faces, which is
+            # data-consistent by construction and needs no stratum.
+            rng = np.random.default_rng(99)
+            n_bc = 4_096
+            bc_pts = rng.random((n_bc, 3)) * np.array([LX, LY, LZ])
+            face = rng.integers(0, 6, size=n_bc)
+            axis, side = face % 3, face // 3
+            bc_pts[np.arange(n_bc), axis] = side * np.array([LX, LY, LZ])[axis]
+            bc_u = field.velocity(bc_pts)
 
         def model_factory(obs):
             recon = PINNReconstructor(bc_points=bc_pts, bc_values=bc_u, steps=steps)
