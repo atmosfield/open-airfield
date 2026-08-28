@@ -72,3 +72,38 @@ def test_eval_cache_roundtrip(tmp_path):
     assert u1.tobytes() == u2.tobytes()
     # And the truth values must match a fresh probe of the field.
     assert np.array_equal(u1, FIELD.velocity(pts1))
+
+
+def test_informed_placement_is_reproducible_and_in_bounds():
+    from open_airfield.sampling import informed_points
+
+    for density in (5, 10, 20, 50):
+        pts = informed_points(density)
+        assert pts.shape == (density, 3)
+        assert np.array_equal(pts, informed_points(density))
+        assert (pts >= 0.1 - 1e-9).all()
+        assert (pts <= np.array([8.0, 7.0, 3.0]) - 0.1 + 1e-9).all()
+
+
+def test_informed_seeds_never_collide_with_random_seeds():
+    """Two placement strategies, two seed spaces: a shared seed would silently
+    make an 'informed' run reproduce a random one."""
+    from open_airfield.sampling import informed_seed, observation_seed
+
+    random_seeds = {observation_seed(d, p) for d in (5, 10, 20, 50) for p in range(8)}
+    informed_seeds = {informed_seed(d, p) for d in (5, 10, 20, 50) for p in range(8)}
+    assert not (random_seeds & informed_seeds)
+
+
+def test_informed_placement_sees_the_jet_and_random_does_not():
+    """The counterfactual's premise, asserted on declared geometry alone: the
+    informed set puts sensors on the supply axis, uniform random does not."""
+    from open_airfield.geometry import SUPPLY
+    from open_airfield.sampling import informed_points, sample_observations
+
+    pts = informed_points(20)
+    on_axis = (
+        (np.abs(pts[:, 0] - SUPPLY.x) < 0.5)
+        & (np.abs(pts[:, 1] - SUPPLY.y) < 0.5)
+    ).sum()
+    assert on_axis >= 5, f"informed set only put {on_axis} sensors near the supply axis"

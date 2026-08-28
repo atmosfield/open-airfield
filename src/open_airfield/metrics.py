@@ -84,3 +84,40 @@ def as_row(result: EvalResult, **labels) -> dict:
     row.update(asdict(result))
     row["worst_voxel"] = "/".join(map(str, result.worst_voxel))
     return row
+
+
+def moving_air_metrics(
+    pred: np.ndarray, truth: np.ndarray, theta_speed: float = 0.25
+) -> dict:
+    """rel_l2 restricted to the part of the room that is actually moving.
+
+    Added 28 Aug 2026 for the informed-placement counterfactual. Global rel_l2
+    is dominated by the ~95% of CASE-01 that is near-still air, where predicting
+    zero scores 1.0 and any smooth field scores well: it cannot say whether the
+    jet was recovered, which is the whole question the counterfactual asks.
+    Without this a null result is uninterpretable.
+
+    theta_speed is the same 0.25 m/s (a quarter of supply velocity) used to
+    define "moving air" in the placement finding, so the numbers compare.
+
+    Selecting points by truth is a property of the METRIC, not of the fit — no
+    truth reaches the reconstructor.
+    """
+    truth_mag = np.linalg.norm(truth, axis=1)
+    moving = truth_mag > theta_speed
+    n_moving = int(moving.sum())
+    if n_moving == 0:
+        return {"theta_speed": theta_speed, "frac_moving": 0.0, "rel_l2_moving": float("nan")}
+    err = pred[moving] - truth[moving]
+    return {
+        "theta_speed": theta_speed,
+        "frac_moving": float(moving.mean()),
+        "n_moving": n_moving,
+        "rel_l2_moving": float(np.linalg.norm(err) / np.linalg.norm(truth[moving])),
+        "rel_l2_still": float(
+            np.linalg.norm(pred[~moving] - truth[~moving])
+            / max(np.linalg.norm(truth[~moving]), 1e-12)
+        ),
+        "peak_speed_pred": float(np.linalg.norm(pred, axis=1).max()),
+        "peak_speed_truth": float(truth_mag.max()),
+    }

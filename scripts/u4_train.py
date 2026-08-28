@@ -33,7 +33,12 @@ from open_airfield.baselines import IDWBaseline, MeanBaseline, ZeroBaseline
 from open_airfield.field_synthetic import SyntheticField
 from open_airfield.geometry import LX, LY, LZ, case01_boundary_conditions
 from open_airfield.model import PINNReconstructor
-from open_airfield.sampling import load_or_build_eval_cache, sample_observations
+from open_airfield.metrics import moving_air_metrics
+from open_airfield.sampling import (
+    load_or_build_eval_cache,
+    sample_informed,
+    sample_observations,
+)
 
 N_BC = 4_096
 BC_SEED = 99
@@ -63,6 +68,11 @@ def main() -> int:
         "--extract-bc",
         action="store_true",
         help="CASE-01: add the conservation-derived extract stratum (closes the mass balance)",
+    )
+    ap.add_argument(
+        "--informed",
+        action="store_true",
+        help="place sensors deliberately from declared geometry instead of uniform random",
     )
     ap.add_argument(
         "--oracle-bc",
@@ -103,7 +113,19 @@ def main() -> int:
         bc_pts = wall_points(N_BC, rng)
         bc_u = field.velocity(bc_pts)  # synthetic: data-consistent truth BC
 
-    obs = sample_observations(field, density=args.density, placement_id=args.placement)
+    obs = (
+        sample_informed(field, args.density, args.placement)
+        if args.informed
+        else sample_observations(field, density=args.density, placement_id=args.placement)
+    )
+    obs_speeds = np.linalg.norm(obs.u, axis=1)
+    print(
+        f"observations [{'INFORMED' if args.informed else 'uniform random'}] "
+        f"n={len(obs.points)} seed={obs.seed} | speeds min {obs_speeds.min():.3f} "
+        f"median {np.median(obs_speeds):.3f} max {obs_speeds.max():.3f} m/s | "
+        f"on moving air (>0.25) {int((obs_speeds > 0.25).sum())}/{len(obs_speeds)}",
+        flush=True,
+    )
 
     model = PINNReconstructor(
         bc_points=bc_pts, bc_values=bc_u, steps=args.steps, momentum=args.momentum
@@ -115,7 +137,9 @@ def main() -> int:
     def rel_l2(pred):
         return float(np.linalg.norm(pred - truth) / np.linalg.norm(truth))
 
-    model_score = rel_l2(model.predict(eval_pts))
+    model_pred = model.predict(eval_pts)
+    model_score = rel_l2(model_pred)
+    moving = moving_air_metrics(model_pred, truth)
     scores = {}
     for name, B in (("zero", ZeroBaseline()), ("mean", MeanBaseline()), ("idw", IDWBaseline())):
         B.fit(obs)
@@ -125,6 +149,8 @@ def main() -> int:
     best_score = scores[best_name]
 
     tag = "case01" if args.vtk else "synthetic"
+    if args.informed:
+        tag += "-informed"
     if args.oracle_bc:
         tag += "-ORACLE-BC-DIAGNOSTIC-NOT-PUBLISHABLE"
     elif args.extract_bc:
@@ -169,6 +195,12 @@ def main() -> int:
         # Divergence guard (28 Aug 2026): if best_step is well short of the last
         # step, or final/best is large, the run went unstable and the score is
         # from the retained best weights rather than from where training ended.
+        "placement_strategy": "informed" if args.informed else "uniform-random",
+        "obs_on_moving_air": int((obs_speeds > 0.25).sum()),
+        # Global rel_l2 is dominated by the ~95% still air and cannot say whether
+        # the jet was recovered. rel_l2_moving is the number the counterfactual
+        # is actually about.
+        "moving_air": {k: (round(v, 4) if isinstance(v, float) else v) for k, v in moving.items()},
         "best_step": model.best_step,
         "best_loss": model.best_loss,
         "final_loss": model.final_loss,
@@ -181,6 +213,13 @@ def main() -> int:
         f"\nU4 single fit [{tag}, d={args.density} p={args.placement}]: "
         f"model rel_l2 {model_score:.4f} vs {bar_label} = {bar:.4f} "
         f"-> {result['acceptance']}"
+    )
+    print(
+        f"  moving air: rel_l2 {moving['rel_l2_moving']:.4f} over "
+        f"{moving.get('n_moving', 0)} pts ({moving['frac_moving']:.2%} of grid) | "
+        f"still air rel_l2 {moving.get('rel_l2_still', float('nan')):.4f} | "
+        f"peak speed pred {moving.get('peak_speed_pred', 0):.3f} "
+        f"vs truth {moving.get('peak_speed_truth', 0):.3f} m/s"
     )
     if args.vtk:
         print("NOTE: one placement, not the gate. The gate takes the median over 8.")
