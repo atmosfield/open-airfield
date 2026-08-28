@@ -16,6 +16,17 @@ p auxiliary and never scored. Loss = w_d*data + w_c*continuity^2 + w_b*bc.
   velocity (built by the caller, passed as bc_points/bc_values).
 - Training envelope: Adam + exp decay (the ldc constant), <=20k steps, NaN
   guard trips the run red.
+- **Best-weight retention + gradient clipping (28 Aug 2026).** The 26 Aug
+  momentum arm was BEATING the no-momentum arm at step 6000 (total loss
+  2.30e-4 against 5.22e-4), spiked 2,600x at step 6500 and never recovered,
+  ending at 1.50e-2. predict() scored those last-step weights, so the reported
+  rel_l2 of 1.1319 measured an instability rather than the physics, and
+  "momentum makes it worse" was never established. fit() now restores the
+  lowest-loss weights and clips gradient norm. NOTE the selection loss is the
+  per-step value, and collocation points are resampled every step, so ~9% of
+  it is a stochastic estimate at convergence: this is a divergence guard, not
+  a careful early-stopping criterion. best_step / best_loss / final_loss are
+  exposed so a run that needed the guard says so in its result.
 
 Runs inside the physicsnemo:26.06 container on the T4; this module is not
 importable on the Mac (no torch/physicsnemo locally) and its tests skip there.
@@ -76,6 +87,7 @@ class PINNReconstructor:
         lr: float = 1e-3,
         weights: tuple[float, float, float] = (1.0, 1.0, 1.0),  # (data, continuity, bc)
         momentum: bool = False,  # invariant 3: experiment flag, OFF by default
+        clip_grad: float = 1.0,  # 0 disables; see fit() for why this is not optional
         nu: float = 1.5e-5,
         seed: int = 0,
         log_every: int = 500,
@@ -89,9 +101,16 @@ class PINNReconstructor:
         self.lr = lr
         self.w_data, self.w_cont, self.w_bc = weights
         self.momentum = momentum
+        self.clip_grad = clip_grad
         self.seed = seed
         self.log_every = log_every
         self.log: list[dict] = []
+
+        # Best-weight retention (added 28 Aug 2026, see fit()).
+        self.best_loss = float("inf")
+        self.best_step = -1
+        self.final_loss = float("nan")
+        self._best_state: dict | None = None
 
         torch.manual_seed(seed)
         self.model = FullyConnected(
@@ -160,10 +179,20 @@ class PINNReconstructor:
                 + self.w_cont * (cont_loss + mom_loss)
                 + self.w_bc * bc_loss
             )
-            if not math.isfinite(loss.item()):
+            loss_value = loss.item()
+            if not math.isfinite(loss_value):
                 raise TrainingDiverged(f"non-finite loss at step {step}")
 
+            if loss_value < self.best_loss:
+                self.best_loss = loss_value
+                self.best_step = step
+                self._best_state = {
+                    k: v.detach().clone() for k, v in self.model.state_dict().items()
+                }
+
             loss.backward()
+            if self.clip_grad:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
             optimizer.step()
             scheduler.step()
 
@@ -184,6 +213,16 @@ class PINNReconstructor:
                     f"bc {row['bc']:.3e}) {row['elapsed_s']}s",
                     flush=True,
                 )
+
+        self.final_loss = loss_value
+        if self._best_state is not None:
+            self.model.load_state_dict(self._best_state)
+        print(
+            f"restored best weights from step {self.best_step} "
+            f"(loss {self.best_loss:.3e}; final step {self.steps - 1} "
+            f"was {self.final_loss:.3e}, ratio {self.final_loss / self.best_loss:.1f}x)",
+            flush=True,
+        )
 
     @torch.no_grad()
     def predict(self, points: np.ndarray, batch: int = 65_536) -> np.ndarray:

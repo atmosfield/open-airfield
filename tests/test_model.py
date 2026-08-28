@@ -42,3 +42,13 @@ def test_predict_shape_dtype(tiny_model):
 
 def test_momentum_flag_off_by_default(tiny_model):
     assert tiny_model.momentum is False
+
+
+def test_best_weight_retention_and_clipping(tiny_model):
+    """The 26 Aug momentum arm scored a diverged network because fit() left the
+    last-step weights in place. fit() now restores the lowest-loss weights."""
+    assert tiny_model.clip_grad == 1.0
+    assert 0 <= tiny_model.best_step < tiny_model.steps
+    assert np.isfinite(tiny_model.best_loss)
+    assert np.isfinite(tiny_model.final_loss)
+    assert tiny_model.best_loss <= tiny_model.final_loss

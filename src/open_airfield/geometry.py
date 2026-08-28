@@ -63,6 +63,15 @@ EXTRACT = CeilingPatch(x=4.0, y=5.5, z=3.0, width=0.6, depth=0.6)
 VOLUMETRIC_FLOW = SUPPLY.area * SUPPLY_VELOCITY  # m^3/s
 AIR_CHANGES_PER_HOUR = VOLUMETRIC_FLOW * 3600.0 / VOLUME
 
+# Extract mean velocity, DERIVED — not read from the truth field.
+# Steady + incompressible + one inlet + one outlet => what goes in comes out.
+# 0.36 m^3/s through a matching 0.36 m^2 patch = 1.0 m/s outward (+z).
+# The measured extract column is +1.01 m/s, which CONFIRMS this arithmetic
+# rather than being its source, so imposing it leaks no truth: it is the same
+# class of knowledge as the declared supply velocity. See the 28 Aug finding
+# in case01_boundary_conditions below.
+EXTRACT_VELOCITY = VOLUMETRIC_FLOW / EXTRACT.area  # m/s, upward (+z)
+
 # Regime, as declared: steady-state RANS, k-omega SST, purely forced.
 # No buoyancy, no heat loads, no occupancy, no obstruction.
 # The absence of thermal drive is what makes the incompressible RANS mean
@@ -104,6 +113,19 @@ STEADY_STATE = True
 # non-area-proportional split: the supply is one of two boundary CONDITIONS,
 # not one of two areas, and area-weighting silently deletes it.
 
+# 🔴 THIRD DEFECT, found 28 Aug 2026 by adversarial pass on the gate sweep.
+# Excluding the extract entirely (defect 1's fix) left the constraint set with
+# an INLET AND NO OUTLET: the network is asked to be divergence-free inside a
+# sealed box with 0.36 m^3/s injected at the ceiling and nowhere to leave.
+# That is not the case Nishan ran, and it is a candidate mechanism for the jet
+# failing to propagate that is a code defect rather than an information limit.
+# The truth-leakage argument holds for the extract PROFILE and does not hold
+# for its MEAN, which is conservation arithmetic on declared geometry
+# (EXTRACT_VELOCITY above). Note which run had a self-consistent BC set: the
+# synthetic one, the one that passed.
+# include_extract defaults False so the 26 Aug sweep stays exactly reproducible;
+# run 2 of the pre-counterfactual plan turns it on and measures the delta.
+
 SUPPLY_FRACTION = 0.125
 PATCH_TOL = 1e-9
 
@@ -118,8 +140,15 @@ def _in_patch(points, patch) -> "np.ndarray":
     )
 
 
-def case01_boundary_conditions(n: int = 4_096, seed: int = 99):
-    """No-slip wall points + declared supply points. Extract is excluded.
+def case01_boundary_conditions(
+    n: int = 4_096, seed: int = 99, include_extract: bool = False
+):
+    """No-slip wall points + declared supply points.
+
+    include_extract=False (default, the 26 Aug sweep): extract excluded.
+    include_extract=True: extract added as its own stratum at the DERIVED
+    EXTRACT_VELOCITY, which closes the mass balance. No truth is read either
+    way — both vent values come from the declared case setup.
 
     Returns (points, values), both (m, 3) float64, m <= n.
     """
@@ -127,7 +156,8 @@ def case01_boundary_conditions(n: int = 4_096, seed: int = 99):
 
     rng = np.random.default_rng(seed)
     n_supply = int(round(n * SUPPLY_FRACTION))
-    n_wall = n - n_supply
+    n_extract = n_supply if include_extract else 0
+    n_wall = n - n_supply - n_extract
     box = np.array([LX, LY, LZ])
 
     # Walls: uniform over the six faces, then drop anything landing on either
@@ -148,4 +178,15 @@ def case01_boundary_conditions(n: int = 4_096, seed: int = 99):
     sup[:, 2] = SUPPLY.z
     sup_u = np.tile([0.0, 0.0, -SUPPLY_VELOCITY], (n_supply, 1))
 
-    return np.vstack([wall_pts, sup]), np.vstack([wall_u, sup_u])
+    pts_out = [wall_pts, sup]
+    vals_out = [wall_u, sup_u]
+
+    if include_extract:
+        ext = np.empty((n_extract, 3))
+        ext[:, 0] = EXTRACT.x + (rng.random(n_extract) - 0.5) * EXTRACT.width
+        ext[:, 1] = EXTRACT.y + (rng.random(n_extract) - 0.5) * EXTRACT.depth
+        ext[:, 2] = EXTRACT.z
+        pts_out.append(ext)
+        vals_out.append(np.tile([0.0, 0.0, EXTRACT_VELOCITY], (n_extract, 1)))
+
+    return np.vstack(pts_out), np.vstack(vals_out)

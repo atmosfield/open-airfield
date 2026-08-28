@@ -59,15 +59,44 @@ def main() -> int:
     ap.add_argument("--placement", "-p", type=int, default=0)
     ap.add_argument("--momentum", action="store_true")
     ap.add_argument("--vtk", type=Path, default=None, help="CASE-01 export; default synthetic")
+    ap.add_argument(
+        "--extract-bc",
+        action="store_true",
+        help="CASE-01: add the conservation-derived extract stratum (closes the mass balance)",
+    )
+    ap.add_argument(
+        "--oracle-bc",
+        action="store_true",
+        help="DIAGNOSTIC ONLY, NEVER PUBLISHABLE: CASE-01 BCs read from the truth field",
+    )
     args = ap.parse_args()
+    if args.oracle_bc and not args.vtk:
+        ap.error("--oracle-bc is a CASE-01 diagnostic; the synthetic path already uses truth BCs")
 
     if args.vtk:
         from open_airfield.ingest_vtk import Case01Field
 
         # units_verified: the meta.yml sidecar declares SI explicitly.
         field = Case01Field(args.vtk, units_verified=True)
-        # No-slip walls + declared supply, extract excluded, supply stratified.
-        bc_pts, bc_u = case01_boundary_conditions()
+        if args.oracle_bc:
+            # 🔴 TRUTH LEAKAGE BY DESIGN. This run answers ONE question and its
+            # number may never be published, quoted to Rich as a result, or put
+            # in the benchmark: with a CONSISTENT boundary condition set, i.e.
+            # exactly the setup the synthetic field had when it PASSED at 0.124,
+            # does the model still score ~0.92 on the real field?
+            #   ~0.92 -> information limit. The 26 Aug NO-GO is sound.
+            #   much lower -> the NO-GO is a BC-construction artefact.
+            # Points are inset 1 mm so the VTK probe does not reject them for
+            # sitting exactly on the mesh surface; the cell size is 50 mm.
+            rng = np.random.default_rng(BC_SEED)
+            bc_pts = wall_points(N_BC, rng)
+            box = np.array([LX, LY, LZ])
+            bc_pts = np.clip(bc_pts, 1e-3, box - 1e-3)
+            bc_u = field.velocity(bc_pts)
+        else:
+            # No-slip walls + declared supply, supply stratified. --extract-bc
+            # adds the conservation-derived extract; neither reads truth.
+            bc_pts, bc_u = case01_boundary_conditions(include_extract=args.extract_bc)
     else:
         field = SyntheticField()
         rng = np.random.default_rng(BC_SEED)
@@ -96,6 +125,10 @@ def main() -> int:
     best_score = scores[best_name]
 
     tag = "case01" if args.vtk else "synthetic"
+    if args.oracle_bc:
+        tag += "-ORACLE-BC-DIAGNOSTIC-NOT-PUBLISHABLE"
+    elif args.extract_bc:
+        tag += "-extractbc"
     out = Path("outputs")
     out.mkdir(exist_ok=True)
     with (out / f"u4-loss-log-{tag}.csv").open("w", newline="") as fh:
@@ -121,12 +154,25 @@ def main() -> int:
         "placement": args.placement,
         "steps": args.steps,
         "momentum": args.momentum,
+        "bc_mode": (
+            "ORACLE (truth-leaking diagnostic, NOT PUBLISHABLE)"
+            if args.oracle_bc
+            else ("walls+supply+derived-extract" if args.extract_bc else "walls+supply")
+        ),
+        "n_bc_points": int(len(bc_pts)),
         "model_rel_l2": round(model_score, 4),
         "baselines": {k: round(v, 4) for k, v in scores.items()},
         "best_baseline": best_name,
         "bar": round(bar, 4),
         "acceptance": "PASS" if verdict else "FAIL",
         "train_wall_clock_s": model.log[-1]["elapsed_s"],
+        # Divergence guard (28 Aug 2026): if best_step is well short of the last
+        # step, or final/best is large, the run went unstable and the score is
+        # from the retained best weights rather than from where training ended.
+        "best_step": model.best_step,
+        "best_loss": model.best_loss,
+        "final_loss": model.final_loss,
+        "final_over_best": round(model.final_loss / model.best_loss, 3),
     }
     (out / f"u4-result-{tag}.json").write_text(json.dumps(result, indent=2))
 

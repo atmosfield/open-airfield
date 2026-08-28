@@ -32,6 +32,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--vtk", type=Path, default=None, help="CASE-01 export; default synthetic")
     ap.add_argument("--with-model", action="store_true", help="include PINN fits (GPU)")
+    ap.add_argument(
+        "--extract-bc",
+        action="store_true",
+        help="CASE-01: add the conservation-derived extract stratum (see geometry.py)",
+    )
     ap.add_argument("--steps", type=int, default=None, help="override sweep.model_steps")
     ap.add_argument("--out", type=Path, default=Path("outputs/gate-report"))
     args = ap.parse_args()
@@ -66,7 +71,7 @@ def main() -> int:
         if args.vtk:
             # CASE-01: no-slip walls + declared supply, extract excluded, supply
             # stratified. See geometry.case01_boundary_conditions for why.
-            bc_pts, bc_u = case01_boundary_conditions()
+            bc_pts, bc_u = case01_boundary_conditions(include_extract=args.extract_bc)
         else:
             # Synthetic: BCs come from truth on all six faces, which is
             # data-consistent by construction and needs no stratum.
