@@ -55,6 +55,11 @@ def build_obs_cache(field, path: Path) -> dict:
     return out
 
 
+def sel_ell(entry):
+    """Length scale for a selection entry, scaled if it came from the aniso family."""
+    return entry["ell"] * ANISO if entry["family"] == "gp_aniso" else entry["ell"]
+
+
 def obs_from_cache(cache, d, p) -> ObservationSet:
     return ObservationSet(
         points=cache[f"p_{d}_{p}"],
@@ -87,6 +92,8 @@ def held_out(factory, cache, d, eval_pts, truth) -> dict:
         "rel_l2_moving": mv["rel_l2_moving"],
         "rel_l2_still": mv["rel_l2_still"],
         "peak_speed_pred": mv["peak_speed_pred"],
+        "median_peak_speed_pred": float(np.median([m["peak_speed_pred"] for _, m in extras])),
+        "peak_speed_truth": mv["peak_speed_truth"],
     }
 
 
@@ -129,6 +136,21 @@ def main() -> int:
             sel[f"{name}_plain_d{d}"] = {"logML": plain[0], "ell": plain[1], "amp": plain[2]}
             sel[f"{name}_jet_d{d}"] = {"logML": jet[0], "ell": jet[1], "amp": jet[2]}
 
+    # The headline pair must be NESTED -- same kernel, amp the only parameter
+    # moving off zero (DivFreeGP docstring). Selecting plain from one family and
+    # jet from the other breaks that, and until 2 Sep 2026 it did: the reported
+    # pair was iso-plain against aniso-jet, with aniso-jet also scoring lower
+    # (d20 logML 82.43 against iso-jet's 86.50). Pick ONE family per density by
+    # log marginal likelihood, then take both arms from inside it. The jet arm's
+    # grid includes amp = 0, so its logML is the family's best either way.
+    for d in DENSITIES:
+        fam = max(("gp_iso", "gp_aniso"), key=lambda f: sel[f"{f}_jet_d{d}"]["logML"])
+        for arm in ("plain", "jet"):
+            sel[f"headline_{arm}_d{d}"] = dict(sel[f"{fam}_{arm}_d{d}"], family=fam)
+        assert (
+            sel[f"headline_plain_d{d}"]["family"] == sel[f"headline_jet_d{d}"]["family"]
+        ), "headline pair is not nested"
+
     for d in DENSITIES:
         o0 = obs_from_cache(cache, d, 0)
         best = max(
@@ -154,10 +176,14 @@ def main() -> int:
             "divfree_gp_aniso": lambda o, d=d: _fit(
                 DivFreeGP(ell=sel[f"gp_aniso_plain_d{d}"]["ell"] * ANISO), o
             ),
+            # The nested headline pair: same kernel, amp the only difference.
+            "divfree_gp_plain": lambda o, d=d: _fit(
+                DivFreeGP(ell=sel_ell(sel[f"headline_plain_d{d}"])), o
+            ),
             "divfree_gp_jet": lambda o, d=d: _fit(
                 DivFreeGP(
-                    ell=sel[f"gp_aniso_jet_d{d}"]["ell"] * ANISO,
-                    prior_amp=sel[f"gp_aniso_jet_d{d}"]["amp"],
+                    ell=sel_ell(sel[f"headline_jet_d{d}"]),
+                    prior_amp=sel[f"headline_jet_d{d}"]["amp"],
                 ),
                 o,
             ),
@@ -172,6 +198,39 @@ def main() -> int:
                 f"spread={r['spread_rel_l2']:.4f}  [{time.time()-t:.1f}s]"
             )
     report["held_out_p1_p7"] = results
+
+    # The pre-registered bar, computed here rather than out of repo. Paired over
+    # the same seven held-out placements, so each pair differs only in amp.
+    paired = {}
+    for d in DENSITIES:
+        a = np.array(results[f"divfree_gp_plain_d{d}"]["all_rel_l2"])
+        b = np.array(results[f"divfree_gp_jet_d{d}"]["all_rel_l2"])
+        delta = a - b  # positive = the ventilation prior helps
+        peak_truth = results[f"divfree_gp_jet_d{d}"]["peak_speed_truth"]
+        paired[str(d)] = {
+            "family": sel[f"headline_jet_d{d}"]["family"],
+            "amp": sel[f"headline_jet_d{d}"]["amp"],
+            "median_plain": float(np.median(a)),
+            "median_jet": float(np.median(b)),
+            "median_delta": float(np.median(delta)),
+            "wins": int((delta > 0).sum()),
+            "n": int(delta.size),
+            "mean_delta": float(delta.mean()),
+            "sd_delta": float(delta.std(ddof=1)),
+            "sd_units": float(delta.mean() / delta.std(ddof=1)),
+            "peak_ratio_jet": (
+                results[f"divfree_gp_jet_d{d}"]["median_peak_speed_pred"] / peak_truth
+            ),
+        }
+        r = paired[str(d)]
+        print(
+            f"  paired d={d:<3} {r['family']} amp={r['amp']:.2f}  "
+            f"plain {r['median_plain']:.4f} -> jet {r['median_jet']:.4f}  "
+            f"{r['wins']}/{r['n']} wins, {r['sd_units']:.2f} sd, "
+            f"peak {100*r['peak_ratio_jet']:.1f}% of truth"
+        )
+    report["paired_headline"] = paired
+
     (args.out / "results.json").write_text(json.dumps(report, indent=2, default=float))
     print(f"\nwritten: {args.out/'results.json'}")
     return 0
