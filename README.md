@@ -50,6 +50,15 @@ three-component readings in a 168 m³ room leave almost everything unconstrained
 The usual fix is to add physics. This benchmark separates two ways of doing that
 and measures them against each other.
 
+```mermaid
+flowchart LR
+    A["CASE-01<br>CFD velocity field"] --> B["Seeded sampling<br>5 / 10 / 20 / 50 sensors<br>8 placements each"]
+    B --> C["Reconstruction<br>baselines, GP, coordinate network"]
+    C --> D["Prediction on the<br>held-out 0.1 m grid<br>168,000 points"]
+    A --> E["Relative L2"]
+    D --> E
+```
+
 **Divergence-free by construction.** Every field the Gaussian process produces is
 built from a vector stream function, so it is exactly solenoidal rather than
 approximately so. There is no penalty term to weight and no residual to
@@ -97,6 +106,31 @@ seeing results is not a selection rule.
 - Error is relative L2 over the whole field. 1.0 is what predicting zero
   everywhere scores.
 
+Ground truth is read in exactly one place, and it is not the place where any
+choice is made.
+
+```mermaid
+flowchart TB
+    T["CASE-01 truth field"]
+
+    subgraph SEL["Selection: no ground truth enters"]
+        direction TB
+        O0["Placement 0<br>observations only"] --> LM["Choose kernel and length scale<br>by log marginal likelihood<br>on those observations"]
+    end
+
+    subgraph EV["Evaluation: held out"]
+        direction TB
+        O17["Placements 1 to 7<br>observations only"] --> FIT["Fit with the chosen<br>hyperparameters"]
+        FIT --> PR["Predicted field"]
+    end
+
+    T -.->|"sampled at sensor points"| O0
+    T -.->|"sampled at sensor points"| O17
+    LM --> FIT
+    PR --> SC["Relative L2<br>median over the seven"]
+    T ==>|"the only place truth is read"| SC
+```
+
 The selection rule is stricter than the protocol required, and it matters. An
 earlier selector scored candidates against ground truth on placement 0, which
 inflated some methods and deflated others. Every number here comes from the
@@ -121,6 +155,28 @@ The row worth pausing on is the analytic prior with no sensors at all. Geometry
 alone, with no measurement, reconstructs this room better than inverse distance
 weighting does from twenty readings.
 
+The three rows that carry the result, with the baselines dropped so the shape is
+visible. Bars are scaled from 0.75 to 0.95.
+
+```text
+                          0.75     0.80     0.85     0.90     0.95
+                            |        |        |        |        |
+  10 sensors
+    prior alone, no sensors ████████████████████████████                 0.8763
+    GP, no prior            ██████████████████████████████████████       0.9211
+    GP + ventilation prior  ██████████████████                           0.8310  <-- best
+
+  20 sensors
+    prior alone, no sensors ████████████████████████████                 0.8763
+    GP, no prior            █████████████████████████                    0.8634
+    GP + ventilation prior  ██████████                                   0.7964  <-- best
+
+  50 sensors
+    prior alone, no sensors ████████████████████████████                 0.8763
+    GP, no prior            ███████                                      0.7836
+    GP + ventilation prior  ███████████████                              0.8188  <-- prior now hurts
+```
+
 ### Two different bars, and only one is met
 
 The repository contains a pre-registered pass condition in `configs/gate.yaml`,
@@ -133,6 +189,29 @@ threshold of 0.4725 and passes the monotonicity clause. The divergence-free GP
 with the ventilation prior scores 0.7964 against a threshold of 0.4525 and fails
 monotonicity. A halving of error against the best baseline was an ambitious bar
 and it was not cleared. It is stated here rather than quietly retired.
+
+The two bars, and what each one actually asks:
+
+```mermaid
+flowchart TB
+    R["Results at 20 sensors"]
+
+    R --> G["Bar A: the GO gate<br>configs/gate.yaml, locked 24 Aug<br>before any run"]
+    R --> P["Bar B: the paired comparison<br>same kernel, prior amplitude<br>free or pinned to zero"]
+
+    G --> GA["Error at most half<br>the best baseline"]
+    G --> GB["Monotone improvement<br>10 to 20 to 50"]
+    GA --> GR["Coordinate network 0.9197 vs 0.4725<br>Div-free GP 0.7964 vs 0.4525"]
+    GB --> GR2["Coordinate network passes<br>Div-free GP fails"]
+    GR --> GV["NOT MET<br>by anything built here"]
+    GR2 --> GV
+
+    P --> PA["Does the ventilation prior beat<br>the same GP without it,<br>placement by placement"]
+    PA --> PV["MET at 10 and 20 sensors<br>7 of 7, 5.16 sd at d20<br>NOT met at 50: 2 of 7"]
+```
+
+Said plainly: an unqualified claim to have "cleared the pre-registered bar" reads
+as Bar A, and would be false.
 
 The bar that **is** met is a different and narrower one: the paired comparison
 between the two arms of the nested pair, on the same seven held-out placements.
@@ -157,6 +236,26 @@ wrong shape. At low sensor counts that wrong shape is still worth more than
 nothing. Once there are enough sensors to resolve the real field, the mismatch
 forces the fitted amplitude up, the peak overshoots to 111% of truth, and the
 quiet parts of the room pay for it.
+
+```mermaid
+flowchart TB
+    subgraph U["Where the analytic prior is right"]
+        UU["Free-jet similarity holds<br>roughly the first 1.5 to 2 m"]
+    end
+
+    subgraph L["Where the analytic prior is wrong"]
+        LL["The jet has impinged,<br>room recirculation dominates,<br>the prior models neither"]
+    end
+
+    U --- L
+
+    L --> F["Few sensors<br>10 to 20"]
+    L --> M["Many sensors<br>50"]
+
+    F --> FR["The wrong shape still beats<br>having no shape at all<br>7 of 7 placements improve"]
+    M --> MR["Sensors resolve the real field,<br>the mismatch forces the fitted<br>amplitude up"]
+    MR --> MR2["Peak overshoots to 111%,<br>quiet regions degrade,<br>only 2 of 7 improve"]
+```
 
 Two qualifications on that, both from Nishan Jain:
 
