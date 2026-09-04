@@ -11,3 +11,6 @@ data/
 *.vtu
 *.vtk
 outputs/
+
+# macOS
+.DS_Store
