@@ -17,10 +17,10 @@ the advantage reverses.
 ## Status
 
 This repository is complete and the results below are reproducible from it, with
-one exception that matters: **the ground-truth field is not currently
-distributable, so a third party cannot re-run the benchmark end to end today.**
-See [Getting the data](#getting-the-data). Everything else, including every
-number on this page, is produced by a script in `scripts/`.
+one caveat: **the ground-truth field is cleared for release, but the citable
+deposit does not exist yet**, so a third party cannot re-run the benchmark end to
+end until it is minted. See [Getting the data](#getting-the-data). Everything
+else, including every number on this page, is produced by a script in `scripts/`.
 
 ## The case
 
@@ -296,14 +296,15 @@ Two qualifications on that, both from Nishan Jain:
 The CFD field is not in this repository. It is a 207 MB export and `data/` is
 git-ignored.
 
-**There is currently no public route to it.** A citable deposit is intended but
-does not yet exist, so at the time of writing an independent party can read this
-code and cannot re-run the benchmark on CASE-01. The synthetic field described
-below is not a substitute for that; it exercises the code, not the result.
+**Redistribution is cleared. The deposit is in preparation and does not exist
+yet.** Until it is minted there is no public route to the field, so at the time of
+writing an independent party can read this code and cannot re-run the benchmark on
+CASE-01. The synthetic field described below is not a substitute for that; it
+exercises the code, not the result.
 
-The case was computed by Nishan Jain (AeroSHILA) and any redistribution is his to
-authorise. Anyone wanting to reproduce the CASE-01 numbers before a deposit
-exists should open an issue.
+The case was computed by Nishan Jain (AeroSHILA) and will be deposited with a DOI,
+credited to him as creator with AtmosField as commissioning body. Anyone wanting
+the CASE-01 numbers before the deposit lands should open an issue.
 
 ### Running it
 
