@@ -302,9 +302,11 @@ writing an independent party can read this code and cannot re-run the benchmark 
 CASE-01. The synthetic field described below is not a substitute for that; it
 exercises the code, not the result.
 
-The case was computed by Nishan Jain (AeroSHILA) and will be deposited with a DOI,
-credited to him as creator with AtmosField as commissioning body. Anyone wanting
-the CASE-01 numbers before the deposit lands should open an issue.
+The case was computed by Nishan Jain (AeroSHILA) and will be deposited with a DOI
+under CC BY 4.0. Vench Creative Ltd is the rights holder, dataset licensor and
+commissioning body; Nishan Jain is credited for the CFD modelling and physics
+validation. Anyone wanting the CASE-01 numbers before the deposit lands should
+open an issue.
 
 ### Running it
 
