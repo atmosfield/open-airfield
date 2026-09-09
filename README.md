@@ -180,9 +180,9 @@ visible. Bars are scaled from 0.75 to 0.95.
 ### Two different bars, and only one is met
 
 The repository contains a pre-registered pass condition in `configs/gate.yaml`,
-committed on 24 August 2026 before any run. It requires the model to reach half
-the error of the best baseline at 20 sensors, and to improve monotonically from
-10 to 20 to 50.
+committed on 25 August 2026, before the CASE-01 field arrived and before every run
+reported here. It requires the model to reach half the error of the best baseline
+at 20 sensors, and to improve monotonically from 10 to 20 to 50.
 
 **Nothing built here meets it.** The coordinate network scores 0.9197 against a
 threshold of 0.4725 and passes the monotonicity clause. The divergence-free GP
