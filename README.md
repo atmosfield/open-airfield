@@ -16,11 +16,11 @@ the advantage reverses.
 
 ## Status
 
-This repository is complete and the results below are reproducible from it, with
-one caveat: **the ground-truth field is cleared for release, but the citable
-deposit does not exist yet**, so a third party cannot re-run the benchmark end to
-end until it is minted. See [Getting the data](#getting-the-data). Everything
-else, including every number on this page, is produced by a script in `scripts/`.
+This repository is complete and the results below are reproducible from it end to
+end. The ground-truth field is deposited and citable at
+[10.5281/zenodo.22670840](https://doi.org/10.5281/zenodo.22670840) under CC BY 4.0;
+see [Getting the data](#getting-the-data). Everything else, including every number
+on this page, is produced by a script in `scripts/`.
 
 ## The case
 
@@ -296,17 +296,26 @@ Two qualifications on that, both from Nishan Jain:
 The CFD field is not in this repository. It is a 207 MB export and `data/` is
 git-ignored.
 
-**Redistribution is cleared. The deposit is in preparation and does not exist
-yet.** Until it is minted there is no public route to the field, so at the time of
-writing an independent party can read this code and cannot re-run the benchmark on
-CASE-01. The synthetic field described below is not a substitute for that; it
-exercises the code, not the result.
+It is deposited on Zenodo under CC BY 4.0:
 
-The case was computed by Nishan Jain (AeroSHILA) and will be deposited with a DOI
-under CC BY 4.0. Vench Creative Ltd is the rights holder, dataset licensor and
-commissioning body; Nishan Jain is credited for the CFD modelling and physics
-validation. Anyone wanting the CASE-01 numbers before the deposit lands should
-open an issue.
+> **DOI [10.5281/zenodo.22670840](https://doi.org/10.5281/zenodo.22670840)**
+
+Download `internal_00010000.vtu`, `internal_00010000.vtk` and `meta.yml` from the
+record, verify them against the `SHA256SUMS.txt` published alongside them, then lay
+them out so the paths below resolve:
+
+```
+data/case-01/meta.yml
+data/case-01/data/internal_00010000.vtu
+data/case-01/data/internal_00010000.vtk
+```
+
+The record also carries the author's QA report and four velocity-magnitude renders
+of the case. Neither is needed to run the benchmark.
+
+The case was computed by Nishan Jain (AeroSHILA). Vench Creative Ltd is the rights
+holder, dataset licensor and commissioning body; Nishan Jain is credited for the
+CFD modelling and physics validation.
 
 ### Running it
 
@@ -368,9 +377,24 @@ tests/                53 tests
 
 ## Citing the case
 
-The CFD case is Nishan Jain's work and should be credited as such in anything
-that uses it. This repository covers the reconstruction and the benchmark
-around it, not the simulation.
+The CFD case is Nishan Jain's work and should be credited as such in anything that
+uses it. This repository covers the reconstruction and the benchmark around it, not
+the simulation.
+
+Cite the dataset as:
+
+```
+Jain, N. (2026). Open AirField CASE-01: steady RANS velocity field for a
+mechanically ventilated room (1.0.0) [Data set]. Zenodo.
+https://doi.org/10.5281/zenodo.22670840
+```
+
+The dataset's own minimum credit line, which travels with it:
+
+> Rights holder and dataset licensor: Vench Creative Ltd.
+> CFD modelling and physics validation: Nishan Jain.
+> Commissioned by Vench Creative Ltd for the Open AirField project.
+> Licence: Creative Commons Attribution 4.0 International (CC BY 4.0).
 
 ## Licence
 
