@@ -347,6 +347,11 @@ uv run python scripts/u6_gate_report.py
 uv run python scripts/u4_train.py
 ```
 
+The last of those needs `torch` with CUDA, which `uv sync` does not install: the
+coordinate network is not a declared dependency of this package, and its tests
+skip where torch is absent. Everything else, including every number the headline
+result rests on, runs on CPU from `uv sync` alone.
+
 Python 3.12, matching the training container. First run builds and caches the
 evaluation grid and the observation sets, which takes a few minutes; later runs
 reuse them.
